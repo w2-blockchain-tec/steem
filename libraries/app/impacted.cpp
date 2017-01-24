@@ -250,6 +250,12 @@ struct get_impacted_account_visitor
 
    void operator()( const claim_reward_balance_operation& op ) {}
 
+   void operator()( const comment_benefactor_reward_operation& op )
+   {
+      _impacted.insert( op.benefactor );
+      _impacted.insert( op.author );
+   }
+
    //void operator()( const operation& op ){}
 };
 
