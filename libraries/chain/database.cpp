@@ -1493,13 +1493,14 @@ void database::process_vesting_withdrawals()
    }
 }
 
-void database::adjust_total_payout( const comment_object& cur, const asset& sbd_created, const asset& curator_sbd_value )
+void database::adjust_total_payout( const comment_object& cur, const asset& sbd_created, const asset& curator_sbd_value, const asset& beneficiary_value )
 {
    modify( cur, [&]( comment_object& c )
    {
       if( c.total_payout_value.symbol == sbd_created.symbol )
          c.total_payout_value += sbd_created;
          c.curator_payout_value += curator_sbd_value;
+         c.beneficiary_payout_value += beneficiary_value;
    } );
    /// TODO: potentially modify author's total payout numbers as well
 }
@@ -1595,14 +1596,19 @@ void database::cashout_comment_helper( util::comment_reward_context& ctx, const 
             share_type curation_tokens = ( ( reward_tokens * get_curation_rewards_percent() ) / STEEMIT_100_PERCENT ).to_uint64();
             share_type author_tokens = reward_tokens.to_uint64() - curation_tokens;
 
-            author_tokens += pay_curators( comment, curation_tokens );
+            idump( (author_tokens) );
+            curation_tokens = pay_curators( comment, curation_tokens );
+            author_tokens += curation_tokens;
+            idump( (author_tokens) );
+            share_type total_beneficiary = 0;
 
             for( auto& b : comment.beneficiaries )
             {
                auto benefactor_tokens = ( author_tokens * b.second ) / STEEMIT_100_PERCENT;
-               auto vest_created = create_vesting( get_account( b.first ), benefactor_tokens );
+               auto vest_created = create_vesting( get_account( b.first ), benefactor_tokens, has_hardfork( STEEMIT_HARDFORK_0_17__659 ) );
                push_virtual_operation( comment_benefactor_reward_operation( b.first, comment.author, to_string( comment.permlink ), vest_created ) );
                author_tokens -= benefactor_tokens;
+               total_beneficiary += benefactor_tokens;
             }
 
             auto sbd_steem     = ( author_tokens * comment.percent_steem_dollars ) / ( 2 * STEEMIT_100_PERCENT ) ;
@@ -1612,7 +1618,7 @@ void database::cashout_comment_helper( util::comment_reward_context& ctx, const 
             auto vest_created = create_vesting( author, vesting_steem, has_hardfork( STEEMIT_HARDFORK_0_17__659 ) );
             auto sbd_payout = create_sbd( author, sbd_steem, has_hardfork( STEEMIT_HARDFORK_0_17__659 ) );
 
-            adjust_total_payout( comment, sbd_payout.first + to_sbd( sbd_payout.second + asset( vesting_steem, STEEM_SYMBOL ) ), to_sbd( asset( reward_tokens.to_uint64() - author_tokens, STEEM_SYMBOL ) ) );
+            adjust_total_payout( comment, sbd_payout.first + to_sbd( sbd_payout.second + asset( vesting_steem, STEEM_SYMBOL ) ), to_sbd( asset( curation_tokens, STEEM_SYMBOL ) ), to_sbd( asset( total_beneficiary, STEEM_SYMBOL ) ) );
 
             /*if( sbd_created.symbol == SBD_SYMBOL )
                adjust_total_payout( comment, sbd_created + to_sbd( asset( vesting_steem, STEEM_SYMBOL ) ), to_sbd( asset( reward_tokens.to_uint64() - author_tokens, STEEM_SYMBOL ) ) );
